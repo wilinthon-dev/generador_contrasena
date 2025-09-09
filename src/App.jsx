@@ -18,7 +18,7 @@ function App() {
   const [contraseñas, setContraseñas] = useState([]);
   const [mensajeCopiado, setMensajeCopiado] = useState("");
 
-  const generar = () => {
+  const generar = React.useCallback(() => {
     const nueva = generarContraseña({ longitud, mayusculas, minusculas, numeros, simbolos });
     if (!nueva) {
       setError("Selecciona al menos un tipo de carácter.");
@@ -27,7 +27,7 @@ function App() {
     }
     setError("");
     setContraseña(nueva);
-  };
+  }, [longitud, mayusculas, minusculas, numeros, simbolos]);
 
   const copiarContraseña = () => {
     if (contraseña) {
@@ -59,7 +59,7 @@ function App() {
 
   React.useEffect(() => {
     generar();
-  }, [longitud, mayusculas, minusculas, numeros, simbolos]);
+  }, [generar]);
 
   return (
     <>
