@@ -1,0 +1,63 @@
+name: GitFlow Workflow
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/*'
+      - 'hotfix/*'
+      - 'release/*'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run linting
+      run: npm run lint --if-present
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Run tests
+      run: npm test --if-present
+      
+  branch-protection:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Check branch naming
+      run: |
+        BRANCH_NAME="${{ github.head_ref }}"
+        echo "Checking branch name: $BRANCH_NAME"
+        
+        if [[ $BRANCH_NAME =~ ^(feature|hotfix|release)/.+ ]]; then
+          echo "✅ Valid branch name: $BRANCH_NAME"
+        elif [[ $BRANCH_NAME == "develop" ]] || [[ $BRANCH_NAME == "main" ]]; then
+          echo "✅ Valid main branch: $BRANCH_NAME"
+        else
+          echo "❌ Invalid branch name: $BRANCH_NAME"
+          echo "Branch names must follow GitFlow convention:"
+          echo "- feature/feature-name"
+          echo "- hotfix/hotfix-name"
+          echo "- release/version-number"
+          exit 1
+        fi
