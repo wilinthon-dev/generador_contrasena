@@ -2,62 +2,130 @@ name: GitFlow Workflow
 
 on:
   push:
-    branches:
-      - main
-      - develop
-      - 'feature/*'
-      - 'hotfix/*'
-      - 'release/*'
+    branches: [ main, develop ]
   pull_request:
-    branches:
-      - main
-      - develop
+    branches: [ main, develop ]
 
 jobs:
+  # Job para validar que los pull requests siguen las reglas de GitFlow
+  validate-gitflow:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Validar estructura de ramas
+      run: |
+        echo "Validando estructura GitFlow..."
+        if [[ "${{ github.head_ref }}" =~ ^(feature/|hotfix/|release/) ]] || [[ "${{ github.ref }}" =~ ^refs/heads/(main|develop)$ ]]; then
+          echo "✅ Rama válida para GitFlow"
+        else
+          echo "❌ Rama no válida. Use prefijos: feature/, hotfix/, release/ o ramas main/develop"
+          exit 1
+        fi
+
+  # Job para testing en diferentes tipos de ramas
   test:
     runs-on: ubuntu-latest
+    needs: validate-gitflow
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Instalar dependencias
+      run: npm ci
+    
+    - name: Ejecutar linting
+      run: npm run lint --if-present
+    
+    - name: Ejecutar tests
+      run: npm test --if-present
+    
+    - name: Build del proyecto
+      run: npm run build
+
+  # Job específico para la rama main (producción)
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '18'
+        node-version: '20.x'
         cache: 'npm'
-        
-    - name: Install dependencies
+    
+    - name: Instalar dependencias
       run: npm ci
-      
-    - name: Run linting
-      run: npm run lint --if-present
-      
-    - name: Build project
+    
+    - name: Build para producción
       run: npm run build
-      
-    - name: Run tests
-      run: npm test --if-present
-      
-  branch-protection:
+    
+    - name: Deploy a producción
+      run: echo "🚀 Desplegando a producción..."
+
+  # Job para la rama develop (desarrollo)
+  deploy-staging:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: test
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     
     steps:
-    - name: Check branch naming
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Instalar dependencias
+      run: npm ci
+    
+    - name: Build para staging
+      run: npm run build
+    
+    - name: Deploy a staging
+      run: echo "🔄 Desplegando a ambiente de desarrollo..."
+
+  # Job para validar pull requests hacia main
+  validate-main-pr:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    
+    steps:
+    - name: Validar origen del PR hacia main
       run: |
-        BRANCH_NAME="${{ github.head_ref }}"
-        echo "Checking branch name: $BRANCH_NAME"
-        
-        if [[ $BRANCH_NAME =~ ^(feature|hotfix|release)/.+ ]]; then
-          echo "✅ Valid branch name: $BRANCH_NAME"
-        elif [[ $BRANCH_NAME == "develop" ]] || [[ $BRANCH_NAME == "main" ]]; then
-          echo "✅ Valid main branch: $BRANCH_NAME"
+        if [[ "${{ github.head_ref }}" =~ ^(hotfix/|release/) ]] || [[ "${{ github.head_ref }}" == "develop" ]]; then
+          echo "✅ PR válido hacia main desde ${{ github.head_ref }}"
         else
-          echo "❌ Invalid branch name: $BRANCH_NAME"
-          echo "Branch names must follow GitFlow convention:"
-          echo "- feature/feature-name"
-          echo "- hotfix/hotfix-name"
-          echo "- release/version-number"
+          echo "❌ Solo se permiten PRs hacia main desde: develop, hotfix/, release/"
+          exit 1
+        fi
+
+  # Job para validar pull requests hacia develop
+  validate-develop-pr:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    
+    steps:
+    - name: Validar origen del PR hacia develop
+      run: |
+        if [[ "${{ github.head_ref }}" =~ ^(feature/|hotfix/|release/) ]]; then
+          echo "✅ PR válido hacia develop desde ${{ github.head_ref }}"
+        else
+          echo "❌ Solo se permiten PRs hacia develop desde: feature/, hotfix/, release/"
           exit 1
         fi
